@@ -11,7 +11,8 @@ volumes:
   # langfuse_clickhouse_data:
   # langfuse_clickhouse_logs:
   # langfuse_minio_data:
-
+  evolution_instances:
+  evolution_storage:
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
@@ -308,6 +309,44 @@ services:
       interval: 3s
       timeout: 10s
       retries: 10        
+
+  postgres-evolution:
+    container_name: postgres-evolution
+    image: postgres:16
+    restart: always
+    environment:
+      - POSTGRES_USER=${EVOLUTION_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${EVOLUTION_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${EVOLUTION_POSTGRES_DB}      
+    ports:
+      - "5433:5432"
+    volumes:
+      - evolution_storage:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -U ${EVOLUTION_POSTGRES_USER} -d ${EVOLUTION_POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  evolution-api:
+    container_name: evolution_api
+    image: atendai/evolution-api:v2.1.1
+    restart: always
+    ports:
+      - "8383:8080"
+    environment:
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgres://${EVOLUTION_POSTGRES_USER}:${EVOLUTION_POSTGRES_PASSWORD}@postgres-evolution:5432/${EVOLUTION_POSTGRES_DB}
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_LOCAL_ENABLED=false
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres-evolution:
+        condition: service_healthy
 
   searxng:
     container_name: searxng
